@@ -1,0 +1,3 @@
+# гра працює без сторонніх бібліотек
+# matplotlib потрібен лише для графіка в experiments.py
+matplotlib
