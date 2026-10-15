@@ -24,6 +24,14 @@ TILE_OK = "#2a9d8f"      # плитка на своєму місці
 ACCENT = "#e76f51"
 BUTTON = "#e9e3d5"
 
+# короткі назви для статистики, щоб вікно не змінювало ширину
+SHORT_NAMES = {
+    "A* (манхеттенська відстань)": "A* + манхеттен",
+    "A* (плитки не на місці)": "A* + не на місці",
+    "Жадібний (манхеттенська відстань)": "Жадібний + манхеттен",
+    "BFS (пошук у ширину)": "BFS",
+}
+
 DIFFICULTY = {
     "Легка": lambda: scramble(8),
     "Середня": lambda: scramble(20),
@@ -407,7 +415,7 @@ class PuzzleApp:
         self.play_next()
 
     def show_stats(self, result):
-        self.stats["algorithm"].set(result.algorithm)
+        self.stats["algorithm"].set(SHORT_NAMES.get(result.algorithm, result.algorithm))
         self.stats["moves"].set(moves_text(result.moves))
         self.stats["expanded"].set(f"{result.expanded:,}".replace(",", " "))
         self.stats["generated"].set(f"{result.generated:,}".replace(",", " "))
