@@ -5,10 +5,13 @@ import queue
 import threading
 import tkinter as tk
 from tkinter import font as tkfont
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
-from .board import GOAL, SIZE, apply_move, move_tile, moved_tile, random_state, scramble
-from .solvers import ALGORITHMS
+from .board import (
+    GOAL, SIZE, apply_move, inversions, is_solvable, move_tile, moved_tile,
+    parse_state, random_state, scramble,
+)
+from .solvers import ALGORITHMS, astar_manhattan
 
 # --- кольори ---
 BG = "#f5f1e8"
@@ -116,16 +119,17 @@ class PuzzleApp:
                                 bg=BG, highlightthickness=0)
         self.canvas.grid(row=2, column=0, sticky="n")
         self.canvas.bind("<Button-1>", self.on_click)
+        self._build_custom_section(outer)
 
         self.panel = ttk.Frame(outer, padding=(int(20 * self.k), 0, 0, 0))
-        self.panel.grid(row=2, column=1, sticky="ns")
+        self.panel.grid(row=2, column=1, rowspan=2, sticky="n")
         self._build_game_section(self.panel)
         self._build_ai_section(self.panel)
         self._build_stats_section(self.panel)
 
         self.status = ttk.Label(outer, text="Клікніть на плитку поруч із порожньою клітинкою або використовуйте стрілки",
                                 style="Status.TLabel")
-        self.status.grid(row=3, column=0, columnspan=2, sticky="w", pady=(14, 0))
+        self.status.grid(row=4, column=0, columnspan=2, sticky="w", pady=(14, 0))
 
         for key, move in (("<Up>", "D"), ("<Down>", "U"), ("<Left>", "R"), ("<Right>", "L")):
             self.root.bind(key, lambda e, m=move: self.on_key(m))
@@ -152,6 +156,26 @@ class PuzzleApp:
         self.btn_reset = ttk.Button(row, text="Скинути", command=self.on_reset)
         self.btn_reset.pack(side="left", padx=(8, 0))
 
+    def _build_custom_section(self, parent):
+        box = ttk.Frame(parent)
+        box.grid(row=3, column=0, sticky="nw", pady=(14, 0))
+        ttk.Label(box, text="Своя розстановка (по рядках, 0 - порожня):", style="Stat.TLabel").pack(anchor="w")
+        row = ttk.Frame(box)
+        row.pack(anchor="w", pady=(4, 0))
+        self.custom = ttk.Entry(row, width=22, font=(self.family, 11))
+        self.custom.insert(0, "8 6 7 2 5 4 3 0 1")
+        self.custom.pack(side="left", ipady=3)
+        self.custom.bind("<Return>", lambda e: self.on_custom())
+        self.btn_custom = ttk.Button(row, text="Задати", command=self.on_custom)
+        self.btn_custom.pack(side="left", padx=(8, 0))
+
+        legend = ttk.Frame(box)
+        legend.pack(anchor="w", pady=(10, 0))
+        sq = tk.Canvas(legend, width=14, height=14, bg=BG, highlightthickness=0)
+        sq.create_rectangle(1, 1, 13, 13, fill=TILE_OK, outline="")
+        sq.pack(side="left")
+        ttk.Label(legend, text=" - плитка вже на своєму місці", style="Stat.TLabel").pack(side="left")
+
     def _build_ai_section(self, parent):
         ttk.Separator(parent).pack(fill="x", pady=14)
         ttk.Label(parent, text="Штучний інтелект", style="Section.TLabel").pack(anchor="w", pady=(0, 6))
@@ -163,6 +187,8 @@ class PuzzleApp:
         row.pack(anchor="w", fill="x", pady=(8, 0))
         self.btn_solve = ttk.Button(row, text="Розв'язати", style="Accent.TButton", command=self.on_solve)
         self.btn_solve.pack(side="left")
+        self.btn_hint = ttk.Button(row, text="Підказка", command=self.on_hint)
+        self.btn_hint.pack(side="left", padx=(8, 0))
         self.btn_stop = ttk.Button(row, text="Стоп", command=self.on_stop, state="disabled")
         self.btn_stop.pack(side="left", padx=(8, 0))
 
@@ -298,11 +324,42 @@ class PuzzleApp:
         self.set_status("Поле скинуто до цільового стану")
 
 
+    def on_custom(self):
+        if self.animating or self.busy:
+            return
+        try:
+            state = parse_state(self.custom.get())
+        except ValueError as e:
+            messagebox.showerror("Неправильний формат", str(e))
+            return
+        if not is_solvable(state):
+            messagebox.showwarning(
+                "Немає розв'язку",
+                f"Кількість інверсій: {inversions(state)} - непарна.\n\n"
+                "Кожен хід зберігає парність інверсій, а в цільовому стані їх 0, "
+                "тому таку розстановку неможливо зібрати.",
+            )
+            return
+        self.set_state(state)
+        self.set_status(f"Задано розстановку, інверсій: {inversions(state)} (парна) - розв'язок існує")
+
     # ---------- ШІ ----------
+    def on_hint(self):
+        if self.animating or self.busy:
+            return
+        if self.state == GOAL:
+            self.set_status("Поле вже зібране")
+            return
+        result = astar_manhattan(self.state)
+        tile = moved_tile(self.state, result.path[1])
+        self.canvas.itemconfigure(f"t{tile}body", outline=ACCENT, width=int(4 * self.k))
+        self.root.after(1500, lambda: self.canvas.itemconfigure(f"t{tile}body", outline="", width=1))
+        self.set_status(f"Підказка: пересуньте плитку {tile} (оптимальний розв'язок - {moves_text(result.moves)})")
+
     def set_busy(self, busy):
         self.busy = busy
         normal = "disabled" if busy else "normal"
-        for btn in (self.btn_shuffle, self.btn_reset, self.btn_solve):
+        for btn in (self.btn_shuffle, self.btn_reset, self.btn_solve, self.btn_hint, self.btn_custom):
             btn.configure(state=normal)
         self.algorithm.configure(state="disabled" if busy else "readonly")
         self.difficulty.configure(state="disabled" if busy else "readonly")
