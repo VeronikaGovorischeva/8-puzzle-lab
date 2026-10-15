@@ -63,7 +63,7 @@ def bfs(start):
         max_frontier = max(max_frontier, len(queue))
 
     return SearchResult(
-        algorithm="BFS",
+        algorithm="BFS (пошук у ширину)",
         path=_build_path(parent, goal_state),
         expanded=expanded,
         generated=len(parent),
