@@ -14,10 +14,10 @@ from .heuristics import manhattan, misplaced
 @dataclass
 class SearchResult:
     algorithm: str
-    path: list = field(default_factory=list)  # стани від початкового до цілі
-    expanded: int = 0        # скільки вузлів розкрито (взято з черги)
-    generated: int = 0       # скільки різних станів побачено
-    max_frontier: int = 0    # найбільший розмір черги (пам'ять)
+    path: list = field(default_factory=list)
+    expanded: int = 0
+    generated: int = 0
+    max_frontier: int = 0
     seconds: float = 0.0
 
     @property
@@ -81,7 +81,7 @@ def best_first(start, h, g_weight=1, name="A*"):
     """
     _check(start)
     t0 = time.perf_counter()
-    counter = itertools.count()      # щоб heapq не порівнював самі стани
+    counter = itertools.count()
     h0 = h(start)
     frontier = [(h0, h0, next(counter), start)]
     g = {start: 0}
@@ -94,7 +94,7 @@ def best_first(start, h, g_weight=1, name="A*"):
     while frontier:
         _, _, _, state = heapq.heappop(frontier)
         if state in closed:
-            continue                 # застарілий запис у черзі
+            continue
         if state == GOAL:
             found = state
             break
@@ -131,7 +131,6 @@ def greedy_manhattan(start):
     return best_first(start, manhattan, 0, "Жадібний (манхеттенська відстань)")
 
 
-# порядок - від найкращого для гри до найпростішого
 ALGORITHMS = {
     "A* (манхеттенська відстань)": astar_manhattan,
     "A* (плитки не на місці)": astar_misplaced,

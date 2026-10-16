@@ -8,7 +8,7 @@ from puzzle.board import (
 from puzzle.heuristics import manhattan, misplaced
 from puzzle.solvers import ALGORITHMS, astar_manhattan, bfs, greedy_manhattan, hint
 
-HARDEST = (8, 6, 7, 2, 5, 4, 3, 0, 1)  # одна з найважчих розстановок, 31 хід
+HARDEST = (8, 6, 7, 2, 5, 4, 3, 0, 1)
 
 
 def is_valid_path(path):
@@ -22,13 +22,13 @@ def is_valid_path(path):
 
 class BoardTest(unittest.TestCase):
     def test_neighbors_count(self):
-        self.assertEqual(len(neighbors(GOAL)), 2)                         # кут
-        self.assertEqual(len(neighbors((1, 2, 3, 4, 0, 5, 6, 7, 8))), 4)  # центр
-        self.assertEqual(len(neighbors((1, 0, 2, 3, 4, 5, 6, 7, 8))), 3)  # край
+        self.assertEqual(len(neighbors(GOAL)), 2)
+        self.assertEqual(len(neighbors((1, 2, 3, 4, 0, 5, 6, 7, 8))), 4)
+        self.assertEqual(len(neighbors((1, 0, 2, 3, 4, 5, 6, 7, 8))), 3)
 
     def test_solvability(self):
         self.assertTrue(is_solvable(GOAL))
-        self.assertFalse(is_solvable(swap(GOAL, 0, 1)))  # обмін двох плиток
+        self.assertFalse(is_solvable(swap(GOAL, 0, 1)))
         self.assertEqual(inversions((2, 1, 3, 4, 5, 6, 7, 8, 0)), 1)
 
     def test_scramble_is_solvable(self):
@@ -38,7 +38,7 @@ class BoardTest(unittest.TestCase):
 
     def test_move_tile(self):
         self.assertEqual(move_tile(GOAL, 7), (1, 2, 3, 4, 5, 6, 7, 0, 8))
-        self.assertIsNone(move_tile(GOAL, 0))  # плитка 1 не поруч з порожньою
+        self.assertIsNone(move_tile(GOAL, 0))
         after = move_tile(GOAL, 5)
         self.assertEqual(moved_tile(GOAL, after), 6)
 

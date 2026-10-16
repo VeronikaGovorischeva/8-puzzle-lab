@@ -13,18 +13,16 @@ from .board import (
 )
 from .solvers import ALGORITHMS, astar_manhattan
 
-# --- кольори ---
 BG = "#f5f1e8"
 TEXT = "#2d2a32"
 MUTED = "#7a7480"
 BOARD = "#2d2a32"
 TILE = "#fbf8f1"
 TILE_SHADOW = "#1c1a20"
-TILE_OK = "#2a9d8f"      # плитка на своєму місці
+TILE_OK = "#2a9d8f"
 ACCENT = "#e76f51"
 BUTTON = "#e9e3d5"
 
-# короткі назви для статистики, щоб вікно не змінювало ширину
 SHORT_NAMES = {
     "A* (манхеттенська відстань)": "A* + манхеттен",
     "A* (плитки не на місці)": "A* + не на місці",
@@ -71,12 +69,11 @@ class PuzzleApp:
         self.state = GOAL
         self.moves_made = 0
         self.animating = False
-        self.busy = False           # ШІ шукає або програє розв'язок
+        self.busy = False
         self.stop_requested = False
         self.solution = []
         self.results = queue.Queue()
 
-        # масштаб для екранів з високою роздільною здатністю
         self.k = max(1.0, root.winfo_fpixels("1i") / 96)
         self.tile = int(104 * self.k)
         self.gap = int(8 * self.k)
@@ -88,7 +85,6 @@ class PuzzleApp:
         self._build_ui()
         self.draw_board()
 
-    # ---------- інтерфейс ----------
     def _setup_style(self):
         self.root.configure(bg=BG)
         style = ttk.Style(self.root)
@@ -227,7 +223,6 @@ class PuzzleApp:
             ttk.Label(grid, textvariable=var, style="StatValue.TLabel").grid(row=r, column=1, sticky="w", padx=(12, 0))
             self.stats[key] = var
 
-    # ---------- малювання ----------
     def cell_xy(self, index):
         r, c = divmod(index, SIZE)
         x = self.pad + c * (self.tile + self.gap)
@@ -269,7 +264,6 @@ class PuzzleApp:
                 self.canvas.move(tag, dx, dy)
                 self.root.after(15, step, i + 1)
             else:
-                # прибираємо накопичену похибку округлення
                 self.canvas.delete(tag)
                 self.draw_tile(tile, dst)
                 self.animating = False
@@ -278,7 +272,6 @@ class PuzzleApp:
 
         step(0)
 
-    # ---------- логіка ----------
     def set_state(self, state):
         self.state = state
         self.moves_made = 0
@@ -351,7 +344,6 @@ class PuzzleApp:
         self.set_state(state)
         self.set_status(f"Задано розстановку, інверсій: {inversions(state)} (парна) - розв'язок існує")
 
-    # ---------- ШІ ----------
     def on_hint(self):
         if self.animating or self.busy:
             return
@@ -383,14 +375,13 @@ class PuzzleApp:
         self.set_busy(True)
         self.stop_requested = False
         self.set_status(f"ШІ шукає розв'язок: {name}...")
-        # пошук у окремому потоці, щоб вікно не «зависало»
         threading.Thread(target=self._solver_worker, args=(self.state, name), daemon=True).start()
         self.root.after(50, self._poll_solver)
 
     def _solver_worker(self, state, name):
         try:
             self.results.put(ALGORITHMS[name](state))
-        except Exception as e:  # noqa: BLE001 - показуємо будь-яку помилку в статусі
+        except Exception as e:
             self.results.put(e)
 
     def _poll_solver(self):

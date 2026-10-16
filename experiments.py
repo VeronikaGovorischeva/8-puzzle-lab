@@ -19,8 +19,6 @@ from statistics import mean
 from puzzle.board import random_state, scramble
 from puzzle.solvers import ALGORITHMS, astar_manhattan
 
-# на малих глибинах різних станів дуже мало (глибина 2 - всього 4 стани),
-# тому починаємо з 6, де їх уже 39
 DEPTHS = list(range(6, 27, 2))
 OUT_DIR = "results"
 
