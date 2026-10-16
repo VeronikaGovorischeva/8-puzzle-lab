@@ -1,4 +1,3 @@
-"""Алгоритми пошуку розв'язку для 8-puzzle."""
 from __future__ import annotations
 
 import heapq
@@ -40,7 +39,6 @@ def _check(start):
 
 
 def bfs(start):
-    """Пошук у ширину: неінформований, знаходить найкоротший розв'язок."""
     _check(start)
     t0 = time.perf_counter()
     parent = {start: None}
@@ -73,12 +71,6 @@ def bfs(start):
 
 
 def best_first(start, h, g_weight=1, name="A*"):
-    """Пошук «спочатку найкращий» з пріоритетом f(n) = g_weight * g(n) + h(n).
-
-    g_weight = 1 -> A*: f = g + h, оптимальний при допустимій евристиці.
-    g_weight = 0 -> жадібний пошук: f = h, швидкий, але не гарантує
-                    найкоротшого розв'язку.
-    """
     _check(start)
     t0 = time.perf_counter()
     counter = itertools.count()
@@ -144,6 +136,5 @@ def solve(start, algorithm="A* (манхеттенська відстань)"):
 
 
 def hint(state):
-    """Наступний оптимальний хід (стан після нього) або None, якщо вже зібрано."""
     result = astar_manhattan(state)
     return result.path[1] if result.moves > 0 else None

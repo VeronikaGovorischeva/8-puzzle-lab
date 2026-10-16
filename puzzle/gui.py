@@ -1,4 +1,3 @@
-"""Графічний інтерфейс гри на Tkinter."""
 from __future__ import annotations
 
 import queue
@@ -38,7 +37,6 @@ DIFFICULTY = {
 
 
 def moves_text(n):
-    """1 хід, 2 ходи, 5 ходів."""
     if n % 10 == 1 and n % 100 != 11:
         return f"{n} хід"
     if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
@@ -251,7 +249,6 @@ class PuzzleApp:
                        fill="white" if ok else TEXT, tags=(tag, "tile", f"{tag}text"))
 
     def animate(self, tile, src, dst, duration, on_done=None):
-        """Плавно пересуває плитку з клітинки src у клітинку dst."""
         self.animating = True
         x1, y1 = self.cell_xy(src)
         x2, y2 = self.cell_xy(dst)
@@ -433,7 +430,6 @@ class PuzzleApp:
 
 
 def enable_dpi_awareness():
-    """На Windows без цього вікно розмите на екранах з масштабуванням."""
     try:
         import ctypes
         ctypes.windll.shcore.SetProcessDpiAwareness(1)

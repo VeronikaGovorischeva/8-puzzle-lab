@@ -1,12 +1,3 @@
-"""Логіка гри 8-puzzle (п'ятнашки 3x3).
-
-Стан поля - кортеж із 9 чисел, записаних по рядках, 0 - порожня клітинка.
-Цільовий стан:
-
-    1 2 3
-    4 5 6
-    7 8 _
-"""
 from __future__ import annotations
 
 import random
@@ -23,7 +14,6 @@ MOVES = {
 
 
 def _build_adjacency():
-    """Для кожної позиції 0..8 - список (хід, сусідня позиція)."""
     adjacency = []
     for i in range(SIZE * SIZE):
         r, c = divmod(i, SIZE)
@@ -46,13 +36,11 @@ def swap(state, i, j):
 
 
 def neighbors(state):
-    """Усі стани, у які можна перейти за один хід: список пар (хід, стан)."""
     zero = state.index(0)
     return [(move, swap(state, zero, j)) for move, j in ADJACENT[zero]]
 
 
 def apply_move(state, move):
-    """Виконує хід порожньої клітинки ('U', 'D', 'L', 'R') або повертає None."""
     zero = state.index(0)
     for name, j in ADJACENT[zero]:
         if name == move:
@@ -61,7 +49,6 @@ def apply_move(state, move):
 
 
 def move_tile(state, index):
-    """Пересуває плитку з позиції index у порожню клітинку, якщо вони сусідні."""
     zero = state.index(0)
     for _, j in ADJACENT[zero]:
         if j == index:
@@ -70,7 +57,6 @@ def move_tile(state, index):
 
 
 def moved_tile(before, after):
-    """Номер плитки, яку пересунули між двома сусідніми станами."""
     return after[before.index(0)]
 
 
@@ -79,7 +65,6 @@ def is_goal(state):
 
 
 def inversions(state):
-    """Кількість пар плиток, що стоять у «неправильному» порядку."""
     tiles = [t for t in state if t != 0]
     count = 0
     for i in range(len(tiles)):
@@ -90,14 +75,10 @@ def inversions(state):
 
 
 def is_solvable(state):
-    """Для поля непарної ширини (3x3) хід не змінює парність кількості інверсій,
-    тому стан розв'язний тоді й лише тоді, коли інверсій парна кількість
-    (у цільовому стані їх 0)."""
     return inversions(state) % 2 == 0
 
 
 def random_state(rng=None):
-    """Випадкова розв'язна розстановка (рівномірно серед усіх 181 440)."""
     rng = rng or random
     tiles = list(GOAL)
     while True:
@@ -108,7 +89,6 @@ def random_state(rng=None):
 
 
 def scramble(steps, rng=None):
-    """Випадкове блукання від цілі на steps ходів (без повернення назад)."""
     rng = rng or random
     state, prev = GOAL, None
     for _ in range(steps):
@@ -118,7 +98,6 @@ def scramble(steps, rng=None):
 
 
 def parse_state(text):
-    """Розбирає рядок на зразок '1 2 3 4 5 6 7 8 0', '12345678_' або '1,2,3,...'."""
     cleaned = text.replace("_", "0").replace(",", " ").replace(";", " ")
     parts = cleaned.split()
     if len(parts) == 1:

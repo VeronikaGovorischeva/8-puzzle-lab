@@ -1,13 +1,3 @@
-"""Порівняння алгоритмів пошуку на випадкових розстановках.
-
-Запуск:  python experiments.py            (за замовчуванням 20 задач на кожну глибину)
-         python experiments.py --per-depth 5 --seed 1
-
-Результати зберігаються в папку results/:
-    results.csv          - сирі дані по кожній задачі
-    summary.md           - зведені таблиці
-    expanded_nodes.png   - графік (потрібен matplotlib)
-"""
 from __future__ import annotations
 
 import argparse
@@ -31,7 +21,6 @@ SHORT = {
 
 
 def collect_instances(depths, per_depth, rng):
-    """Підбирає per_depth різних задач з оптимальним розв'язком рівно d ходів."""
     buckets = {d: [] for d in depths}
     tries = 0
     while any(len(b) < per_depth for b in buckets.values()):
@@ -52,7 +41,6 @@ def collect_instances(depths, per_depth, rng):
 
 
 def branching_factor(nodes, depth):
-    """Ефективний коефіцієнт розгалуження b*: N + 1 = 1 + b + b^2 + ... + b^d."""
     if depth == 0:
         return float("nan")
     lo, hi = 1.0, 10.0
