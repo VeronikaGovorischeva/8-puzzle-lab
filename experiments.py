@@ -14,6 +14,7 @@ OUT_DIR = "results"
 
 SHORT = {
     "A* (манхеттенська відстань)": "A* h2",
+    "Зважений A* (w=2, манхеттенська відстань)": "WA* w=2",
     "A* (плитки не на місці)": "A* h1",
     "Жадібний (манхеттенська відстань)": "Greedy",
     "BFS (пошук у ширину)": "BFS",
@@ -119,11 +120,13 @@ def write_summary(algs, table, per_depth, path):
     for d in DEPTHS:
         lines.append(f"| {d} | " + " | ".join(fmt(table[d, a]["ms"], 2) for a in algs) + " |")
 
-    lines += ["", "## Довжина розв'язку жадібного пошуку (оптимум = d)", ""]
-    lines += ["| d | Greedy | перевищення |", "|---|---|---|"]
+    lines += ["", "## Довжина розв'язку неоптимальних алгоритмів (оптимум = d)", ""]
+    lines += ["| d | WA* w=2 | перевищення | Greedy | перевищення |", "|---|---|---|---|---|"]
     for d in DEPTHS:
+        w = table[d, "WA* w=2"]["moves"]
         g = table[d, "Greedy"]["moves"]
-        lines.append(f"| {d} | {fmt(g, 1)} | {fmt((g / d - 1) * 100, 0)}% |")
+        lines.append(f"| {d} | {fmt(w, 1)} | {fmt((w / d - 1) * 100, 0)}% "
+                     f"| {fmt(g, 1)} | {fmt((g / d - 1) * 100, 0)}% |")
 
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
@@ -138,7 +141,8 @@ def plot(algs, table, path):
         print("matplotlib не встановлено - графік пропущено (pip install matplotlib)")
         return
 
-    colors = {"A* h2": "#2a78d6", "A* h1": "#eb6834", "Greedy": "#1baf7a", "BFS": "#c98500"}
+    colors = {"A* h2": "#2a78d6", "WA* w=2": "#8a4fd6", "A* h1": "#eb6834", "Greedy": "#1baf7a",
+              "BFS": "#c98500"}
     ink, muted, grid = "#2d2a32", "#6b6670", "#e4e1da"
     fig, ax = plt.subplots(figsize=(8, 4.6), dpi=200)
     for alg in algs:

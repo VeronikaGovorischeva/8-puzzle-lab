@@ -10,7 +10,9 @@ from .board import (
     SIZES, apply_move, blank_row_from_bottom, goal, inversions, is_solvable, move_tile,
     moved_tile, parse_state, random_state, scramble,
 )
-from .solvers import ALGORITHMS, SearchLimitError, SearchStopped, astar_manhattan
+from .solvers import (
+    ALGORITHMS, WEIGHT, SearchLimitError, SearchStopped, astar_manhattan, weighted_astar_manhattan,
+)
 
 BG = "#f5f1e8"
 TEXT = "#2d2a32"
@@ -24,13 +26,14 @@ BUTTON = "#e9e3d5"
 
 SHORT_NAMES = {
     "A* (манхеттенська відстань)": "A* + манхеттен",
+    f"Зважений A* (w={WEIGHT}, манхеттенська відстань)": f"Зважений A* (w={WEIGHT})",
     "A* (плитки не на місці)": "A* + не на місці",
     "Жадібний (манхеттенська відстань)": "Жадібний + манхеттен",
     "BFS (пошук у ширину)": "BFS",
 }
 
-# Для 4x4 повністю випадкова розстановка потребує ~50+ ходів, і A* на Python з нею
-# не справляється, тому навіть "складна" - це перемішування 60 випадковими ходами.
+# Повністю випадкова розстановка 4x4 потребує в середньому ~52 ходи. Звичайний A* з нею
+# не справляється (ліміт вузлів), а зважений A* і жадібний пошук розв'язують.
 DIFFICULTY = {
     3: {
         "Легка": lambda: scramble(8, size=3),
@@ -40,7 +43,7 @@ DIFFICULTY = {
     4: {
         "Легка": lambda: scramble(10, size=4),
         "Середня": lambda: scramble(30, size=4),
-        "Складна": lambda: scramble(60, size=4),
+        "Складна": lambda: random_state(size=4),
     },
 }
 
@@ -379,7 +382,7 @@ class PuzzleApp:
             var.set("-")
         self.set_state(self.goal)
         if size == 4:
-            self.set_status("Поле 4×4: BFS і A* з плитками не на місці тут дуже повільні")
+            self.set_status("Поле 4×4: для складних розстановок обирайте зважений A* або жадібний пошук")
         else:
             self.set_status("Поле 3×3")
 
@@ -424,7 +427,14 @@ class PuzzleApp:
             self.set_status("Поле вже зібране")
             return
         self.set_status("Шукаю найкращий хід...")
-        self.run_in_background(lambda stop: astar_manhattan(self.state, stop=stop), self._show_hint)
+        self.run_in_background(self._hint_search, self._show_hint)
+
+    def _hint_search(self, stop):
+        # Спочатку оптимальний A*. Якщо розстановка для нього заскладна, беремо зважений A*.
+        try:
+            return astar_manhattan(self.state, limit=200_000, stop=stop)
+        except SearchLimitError:
+            return weighted_astar_manhattan(self.state, stop=stop)
 
     def _show_hint(self, result):
         self.set_busy(False)
@@ -434,7 +444,11 @@ class PuzzleApp:
         tile = moved_tile(self.state, result.path[1])
         self.canvas.itemconfigure(f"t{tile}body", outline=ACCENT, width=int(4 * self.k))
         self.root.after(1500, lambda: self.canvas.itemconfigure(f"t{tile}body", outline="", width=1))
-        self.set_status(f"Підказка: пересуньте плитку {tile} (оптимальний розв'язок - {moves_text(result.moves)})")
+        if result.algorithm.startswith("Зважений"):
+            note = f"зважений A* знайшов розв'язок за {moves_text(result.moves)}"
+        else:
+            note = f"оптимальний розв'язок - {moves_text(result.moves)}"
+        self.set_status(f"Підказка: пересуньте плитку {tile} ({note})")
 
     def set_busy(self, busy):
         self.busy = busy
@@ -471,7 +485,7 @@ class PuzzleApp:
         if isinstance(error, SearchStopped):
             self.set_status("Пошук зупинено")
         elif isinstance(error, SearchLimitError):
-            self.set_status(f"{prefix}: {error}. Спробуйте жадібний пошук або легшу розстановку")
+            self.set_status(f"{prefix}: {error}. Спробуйте зважений A* або жадібний пошук")
         else:
             self.set_status(f"{prefix}: {error}")
 
@@ -508,7 +522,13 @@ class PuzzleApp:
         self.stats["generated"].set(f"{result.generated:,}".replace(",", " "))
         self.stats["frontier"].set(f"{result.max_frontier:,}".replace(",", " "))
         self.stats["time"].set(f"{result.seconds * 1000:.1f} мс")
-        self.stats["optimal"].set("ні" if result.algorithm.startswith("Жадібний") else "так")
+        if result.algorithm.startswith("Жадібний"):
+            optimal = "ні"
+        elif result.algorithm.startswith("Зважений"):
+            optimal = f"ні, але не довше {WEIGHT}× оптимуму"
+        else:
+            optimal = "так"
+        self.stats["optimal"].set(optimal)
 
     def play_next(self):
         if self.stop_event.is_set() or not self.solution:

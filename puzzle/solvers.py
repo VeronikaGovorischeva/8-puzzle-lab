@@ -92,13 +92,13 @@ def bfs(start, limit=NODE_LIMIT, stop=None):
     )
 
 
-def best_first(start, h, g_weight=1, name="A*", limit=NODE_LIMIT, stop=None):
+def best_first(start, h, g_weight=1, name="A*", limit=NODE_LIMIT, stop=None, h_weight=1):
     _check(start)
     target = goal(size_of(start))
     t0 = time.perf_counter()
     counter = itertools.count()
     h0 = h(start)
-    frontier = [(h0, h0, next(counter), start)]
+    frontier = [(h_weight * h0, h0, next(counter), start)]
     g = {start: 0}
     parent = {start: None}
     closed = set()
@@ -122,7 +122,8 @@ def best_first(start, h, g_weight=1, name="A*", limit=NODE_LIMIT, stop=None):
                 g[nxt] = new_g
                 parent[nxt] = state
                 h_val = h(nxt)
-                heapq.heappush(frontier, (g_weight * new_g + h_val, h_val, next(counter), nxt))
+                f = g_weight * new_g + h_weight * h_val
+                heapq.heappush(frontier, (f, h_val, next(counter), nxt))
         max_frontier = max(max_frontier, len(frontier))
 
     return SearchResult(
@@ -147,8 +148,18 @@ def greedy_manhattan(start, limit=NODE_LIMIT, stop=None):
     return best_first(start, manhattan, 0, "Жадібний (манхеттенська відстань)", limit, stop)
 
 
+# Зважений A*: f = g + w*h. Довжина розв'язку не більша за w * оптимум.
+WEIGHT = 2
+
+
+def weighted_astar_manhattan(start, limit=NODE_LIMIT, stop=None):
+    return best_first(start, manhattan, 1, f"Зважений A* (w={WEIGHT}, манхеттенська відстань)",
+                      limit, stop, h_weight=WEIGHT)
+
+
 ALGORITHMS = {
     "A* (манхеттенська відстань)": astar_manhattan,
+    f"Зважений A* (w={WEIGHT}, манхеттенська відстань)": weighted_astar_manhattan,
     "A* (плитки не на місці)": astar_misplaced,
     "Жадібний (манхеттенська відстань)": greedy_manhattan,
     "BFS (пошук у ширину)": bfs,

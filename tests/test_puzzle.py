@@ -8,8 +8,8 @@ from puzzle.board import (
 )
 from puzzle.heuristics import manhattan, misplaced
 from puzzle.solvers import (
-    ALGORITHMS, SearchLimitError, SearchStopped, astar_manhattan, astar_misplaced, bfs,
-    greedy_manhattan, hint,
+    ALGORITHMS, WEIGHT, SearchLimitError, SearchStopped, astar_manhattan, astar_misplaced, bfs,
+    greedy_manhattan, hint, weighted_astar_manhattan,
 )
 
 HARDEST = (8, 6, 7, 2, 5, 4, 3, 0, 1)
@@ -99,6 +99,9 @@ class SolversTest(unittest.TestCase):
                 if name.startswith("A*"):
                     self.assertEqual(solver(s).moves, best, name)
             self.assertGreaterEqual(greedy_manhattan(s).moves, best)
+            weighted = weighted_astar_manhattan(s).moves
+            self.assertGreaterEqual(weighted, best)
+            self.assertLessEqual(weighted, WEIGHT * best)
 
     def test_hardest_state(self):
         self.assertEqual(astar_manhattan(HARDEST).moves, 31)
@@ -196,6 +199,22 @@ class Solvers4x4Test(unittest.TestCase):
         s = scramble(60, random.Random(7), size=4)
         with self.assertRaises(SearchLimitError):
             bfs(s, limit=1000)
+
+    def test_weighted_astar_solves_random(self):
+        rng = random.Random(11)
+        for _ in range(3):
+            s = random_state(rng, size=4)
+            result = weighted_astar_manhattan(s)
+            self.assertEqual(result.path[0], s)
+            self.assertTrue(is_valid_path(result.path))
+            self.assertLessEqual(manhattan(s), result.moves)
+
+    def test_weighted_astar_bound(self):
+        rng = random.Random(12)
+        for _ in range(8):
+            s = scramble(rng.randint(10, 18), rng, size=4)
+            best = astar_manhattan(s).moves
+            self.assertLessEqual(weighted_astar_manhattan(s).moves, WEIGHT * best)
 
     def test_stop(self):
         s = scramble(60, random.Random(7), size=4)
