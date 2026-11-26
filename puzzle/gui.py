@@ -7,10 +7,10 @@ from tkinter import font as tkfont
 from tkinter import messagebox, ttk
 
 from .board import (
-    GOAL, SIZE, apply_move, inversions, is_solvable, move_tile, moved_tile,
-    parse_state, random_state, scramble,
+    SIZES, apply_move, blank_row_from_bottom, goal, inversions, is_solvable, move_tile,
+    moved_tile, parse_state, random_state, scramble,
 )
-from .solvers import ALGORITHMS, astar_manhattan
+from .solvers import ALGORITHMS, SearchLimitError, SearchStopped, astar_manhattan
 
 BG = "#f5f1e8"
 TEXT = "#2d2a32"
@@ -29,10 +29,31 @@ SHORT_NAMES = {
     "BFS (пошук у ширину)": "BFS",
 }
 
+# Для 4x4 повністю випадкова розстановка потребує ~50+ ходів, і A* на Python з нею
+# не справляється, тому навіть "складна" - це перемішування 60 випадковими ходами.
 DIFFICULTY = {
-    "Легка": lambda: scramble(8),
-    "Середня": lambda: scramble(20),
-    "Складна": random_state,
+    3: {
+        "Легка": lambda: scramble(8, size=3),
+        "Середня": lambda: scramble(20, size=3),
+        "Складна": lambda: random_state(size=3),
+    },
+    4: {
+        "Легка": lambda: scramble(10, size=4),
+        "Середня": lambda: scramble(30, size=4),
+        "Складна": lambda: scramble(60, size=4),
+    },
+}
+
+SIZE_LABELS = {f"{n}×{n}": n for n in SIZES}
+
+BOARD_LOOK = {
+    3: {"tile": 104, "font": 30},
+    4: {"tile": 80, "font": 24},
+}
+
+EXAMPLES = {
+    3: "8 6 7 2 5 4 3 0 1",
+    4: "6 8 15 4 1 2 3 0 9 5 10 7 14 13 11 12",
 }
 
 
@@ -64,24 +85,35 @@ def rounded_rect(canvas, x1, y1, x2, y2, r, **kw):
 class PuzzleApp:
     def __init__(self, root):
         self.root = root
-        self.state = GOAL
         self.moves_made = 0
         self.animating = False
         self.busy = False
-        self.stop_requested = False
+        self.stop_event = threading.Event()
         self.solution = []
         self.results = queue.Queue()
 
         self.k = max(1.0, root.winfo_fpixels("1i") / 96)
-        self.tile = int(104 * self.k)
         self.gap = int(8 * self.k)
         self.pad = int(12 * self.k)
-        self.board_px = 2 * self.pad + SIZE * self.tile + (SIZE - 1) * self.gap
+        self._set_size(3)
+        self.state = self.goal
 
         self.family = pick_font(root)
         self._setup_style()
         self._build_ui()
         self.draw_board()
+
+    def _set_size(self, size):
+        self.size = size
+        self.goal = goal(size)
+        self.tile = int(BOARD_LOOK[size]["tile"] * self.k)
+        self.tile_font = BOARD_LOOK[size]["font"]
+        self.board_px = 2 * self.pad + size * self.tile + (size - 1) * self.gap
+
+    def _titles(self):
+        n = self.size
+        return (f"П'ятнашки {n}×{n}",
+                f"Зберіть плитки по порядку: 1-{n * n - 1}, порожня клітинка внизу праворуч")
 
     def _setup_style(self):
         self.root.configure(bg=BG)
@@ -113,9 +145,11 @@ class PuzzleApp:
         outer = ttk.Frame(self.root, padding=int(20 * self.k))
         outer.pack(fill="both", expand=True)
 
-        ttk.Label(outer, text="П'ятнашки 3×3", style="Title.TLabel").grid(row=0, column=0, columnspan=2, sticky="w")
-        ttk.Label(outer, text="Зберіть плитки по порядку: 1-8, порожня клітинка внизу праворуч",
-                  style="Sub.TLabel").grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 14))
+        title, subtitle = self._titles()
+        self.title = ttk.Label(outer, text=title, style="Title.TLabel")
+        self.title.grid(row=0, column=0, columnspan=2, sticky="w")
+        self.subtitle = ttk.Label(outer, text=subtitle, style="Sub.TLabel")
+        self.subtitle.grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 14))
 
         self.canvas = tk.Canvas(outer, width=self.board_px, height=self.board_px,
                                 bg=BG, highlightthickness=0)
@@ -130,7 +164,7 @@ class PuzzleApp:
         self._build_stats_section(self.panel)
 
         self.status = ttk.Label(outer, text="Клікніть на плитку поруч із порожньою клітинкою або використовуйте стрілки",
-                                style="Status.TLabel")
+                                style="Status.TLabel", wraplength=int(700 * self.k))
         self.status.grid(row=4, column=0, columnspan=2, sticky="w", pady=(14, 0))
 
         for key, move in (("<Up>", "D"), ("<Down>", "U"), ("<Left>", "R"), ("<Right>", "L")):
@@ -146,8 +180,13 @@ class PuzzleApp:
 
         row = ttk.Frame(parent)
         row.pack(anchor="w", fill="x", pady=(0, 6))
-        ttk.Label(row, text="Складність:").pack(side="left")
-        self.difficulty = ttk.Combobox(row, values=list(DIFFICULTY), state="readonly", width=10)
+        ttk.Label(row, text="Розмір:").pack(side="left")
+        self.size_box = ttk.Combobox(row, values=list(SIZE_LABELS), state="readonly", width=5)
+        self.size_box.set(f"{self.size}×{self.size}")
+        self.size_box.pack(side="left", padx=(8, 0))
+        self.size_box.bind("<<ComboboxSelected>>", lambda e: self.on_size_change())
+        ttk.Label(row, text="Складність:").pack(side="left", padx=(12, 0))
+        self.difficulty = ttk.Combobox(row, values=list(DIFFICULTY[self.size]), state="readonly", width=10)
         self.difficulty.set("Середня")
         self.difficulty.pack(side="left", padx=(8, 0))
 
@@ -164,8 +203,8 @@ class PuzzleApp:
         ttk.Label(box, text="Своя розстановка (по рядках, 0 - порожня):", style="Stat.TLabel").pack(anchor="w")
         row = ttk.Frame(box)
         row.pack(anchor="w", pady=(4, 0))
-        self.custom = ttk.Entry(row, width=22, font=(self.family, 11))
-        self.custom.insert(0, "8 6 7 2 5 4 3 0 1")
+        self.custom = ttk.Entry(row, width=30, font=(self.family, 11))
+        self.custom.insert(0, EXAMPLES[self.size])
         self.custom.pack(side="left", ipady=3)
         self.custom.bind("<Return>", lambda e: self.on_custom())
         self.btn_custom = ttk.Button(row, text="Задати", command=self.on_custom)
@@ -222,7 +261,7 @@ class PuzzleApp:
             self.stats[key] = var
 
     def cell_xy(self, index):
-        r, c = divmod(index, SIZE)
+        r, c = divmod(index, self.size)
         x = self.pad + c * (self.tile + self.gap)
         y = self.pad + r * (self.tile + self.gap)
         return x, y
@@ -240,12 +279,12 @@ class PuzzleApp:
         x, y = self.cell_xy(index)
         t = self.tile
         tag = f"t{tile}"
-        ok = GOAL[index] == tile
+        ok = self.goal[index] == tile
         s = int(4 * self.k)
         rounded_rect(cv, x, y + s, x + t, y + t + s, int(14 * self.k), fill=TILE_SHADOW, tags=(tag, "tile"))
         rounded_rect(cv, x, y, x + t, y + t, int(14 * self.k),
                      fill=TILE_OK if ok else TILE, tags=(tag, "tile", f"{tag}body"))
-        cv.create_text(x + t / 2, y + t / 2, text=str(tile), font=(self.family, 30, "bold"),
+        cv.create_text(x + t / 2, y + t / 2, text=str(tile), font=(self.family, self.tile_font, "bold"),
                        fill="white" if ok else TEXT, tags=(tag, "tile", f"{tag}text"))
 
     def animate(self, tile, src, dst, duration, on_done=None):
@@ -290,14 +329,14 @@ class PuzzleApp:
         self.do_move(new_state, on_done=self.check_solved)
 
     def check_solved(self):
-        if self.state == GOAL and self.moves_made:
+        if self.state == self.goal and self.moves_made:
             self.set_status(f"Зібрано за {moves_text(self.moves_made)}!")
 
     def set_status(self, text):
         self.status.configure(text=text)
 
     def on_click(self, event):
-        for i in range(SIZE * SIZE):
+        for i in range(self.size * self.size):
             x, y = self.cell_xy(i)
             if x <= event.x <= x + self.tile and y <= event.y <= y + self.tile:
                 self.user_move(move_tile(self.state, i))
@@ -309,45 +348,89 @@ class PuzzleApp:
     def on_shuffle(self):
         if self.animating or self.busy:
             return
-        state = GOAL
-        while state == GOAL:
-            state = DIFFICULTY[self.difficulty.get()]()
+        state = self.goal
+        while state == self.goal:
+            state = DIFFICULTY[self.size][self.difficulty.get()]()
         self.set_state(state)
         self.set_status("Поле перемішано. Удачі!")
 
     def on_reset(self):
         if self.animating or self.busy:
             return
-        self.set_state(GOAL)
+        self.set_state(self.goal)
         self.set_status("Поле скинуто до цільового стану")
 
+    def on_size_change(self):
+        size = SIZE_LABELS[self.size_box.get()]
+        if size == self.size:
+            return
+        if self.animating or self.busy:
+            self.size_box.set(f"{self.size}×{self.size}")
+            return
+        self._set_size(size)
+        title, subtitle = self._titles()
+        self.title.configure(text=title)
+        self.subtitle.configure(text=subtitle)
+        self.root.title(f"{title} - ШІ-розв'язувач")
+        self.canvas.configure(width=self.board_px, height=self.board_px)
+        self.custom.delete(0, "end")
+        self.custom.insert(0, EXAMPLES[size])
+        for var in self.stats.values():
+            var.set("-")
+        self.set_state(self.goal)
+        if size == 4:
+            self.set_status("Поле 4×4: BFS і A* з плитками не на місці тут дуже повільні")
+        else:
+            self.set_status("Поле 3×3")
 
     def on_custom(self):
         if self.animating or self.busy:
             return
         try:
-            state = parse_state(self.custom.get())
+            state = parse_state(self.custom.get(), self.size)
         except ValueError as e:
             messagebox.showerror("Неправильний формат", str(e))
             return
-        if not is_solvable(state):
-            messagebox.showwarning(
-                "Немає розв'язку",
-                f"Кількість інверсій: {inversions(state)} - непарна.\n\n"
-                "Кожен хід зберігає парність інверсій, а в цільовому стані їх 0, "
-                "тому таку розстановку неможливо зібрати.",
-            )
-            return
+        inv = inversions(state)
+        if self.size % 2 == 1:
+            if not is_solvable(state):
+                messagebox.showwarning(
+                    "Немає розв'язку",
+                    f"Кількість інверсій: {inv} - непарна.\n\n"
+                    "Кожен хід зберігає парність інверсій, а в цільовому стані їх 0, "
+                    "тому таку розстановку неможливо зібрати.",
+                )
+                return
+            note = f"інверсій: {inv} (парна)"
+        else:
+            row = blank_row_from_bottom(state)
+            if not is_solvable(state):
+                messagebox.showwarning(
+                    "Немає розв'язку",
+                    f"Інверсій: {inv}, порожня клітинка в {row}-му рядку знизу, сума {inv + row} - парна.\n\n"
+                    "На полі парної ширини кожен хід зберігає парність суми "
+                    "\"інверсії + рядок порожньої клітинки знизу\". У цільовому стані вона "
+                    "дорівнює 0 + 1 = 1, тобто непарна, тому таку розстановку неможливо зібрати.",
+                )
+                return
+            note = f"інверсій: {inv}, рядок порожньої знизу: {row}, сума непарна"
         self.set_state(state)
-        self.set_status(f"Задано розстановку, інверсій: {inversions(state)} (парна) - розв'язок існує")
+        self.set_status(f"Задано розстановку, {note} - розв'язок існує")
 
     def on_hint(self):
         if self.animating or self.busy:
             return
-        if self.state == GOAL:
+        if self.state == self.goal:
             self.set_status("Поле вже зібране")
             return
-        result = astar_manhattan(self.state)
+        self.set_status("Шукаю найкращий хід...")
+        self.run_in_background(lambda stop: astar_manhattan(self.state, stop=stop), self._show_hint)
+
+    def _show_hint(self, result):
+        self.set_busy(False)
+        if isinstance(result, Exception):
+            self.show_error(result, "Підказка недоступна")
+            return
         tile = moved_tile(self.state, result.path[1])
         self.canvas.itemconfigure(f"t{tile}body", outline=ACCENT, width=int(4 * self.k))
         self.root.after(1500, lambda: self.canvas.itemconfigure(f"t{tile}body", outline="", width=1))
@@ -358,41 +441,57 @@ class PuzzleApp:
         normal = "disabled" if busy else "normal"
         for btn in (self.btn_shuffle, self.btn_reset, self.btn_solve, self.btn_hint, self.btn_custom):
             btn.configure(state=normal)
-        self.algorithm.configure(state="disabled" if busy else "readonly")
-        self.difficulty.configure(state="disabled" if busy else "readonly")
+        for box in (self.algorithm, self.difficulty, self.size_box):
+            box.configure(state="disabled" if busy else "readonly")
         self.btn_stop.configure(state="normal" if busy else "disabled")
+
+    def run_in_background(self, task, on_done):
+        self.set_busy(True)
+        self.stop_event.clear()
+
+        def worker():
+            try:
+                result = task(self.stop_event)
+            except Exception as e:
+                result = e
+            self.results.put(result)
+
+        threading.Thread(target=worker, daemon=True).start()
+        self.root.after(50, self._poll, on_done)
+
+    def _poll(self, on_done):
+        try:
+            result = self.results.get_nowait()
+        except queue.Empty:
+            self.root.after(50, self._poll, on_done)
+            return
+        on_done(result)
+
+    def show_error(self, error, prefix):
+        if isinstance(error, SearchStopped):
+            self.set_status("Пошук зупинено")
+        elif isinstance(error, SearchLimitError):
+            self.set_status(f"{prefix}: {error}. Спробуйте жадібний пошук або легшу розстановку")
+        else:
+            self.set_status(f"{prefix}: {error}")
 
     def on_solve(self):
         if self.busy or self.animating:
             return
-        if self.state == GOAL:
+        if self.state == self.goal:
             self.set_status("Поле вже зібране - перемішайте його")
             return
         name = self.algorithm.get()
-        self.set_busy(True)
-        self.stop_requested = False
         self.set_status(f"ШІ шукає розв'язок: {name}...")
-        threading.Thread(target=self._solver_worker, args=(self.state, name), daemon=True).start()
-        self.root.after(50, self._poll_solver)
+        self.run_in_background(lambda stop: ALGORITHMS[name](self.state, stop=stop), self._start_playback)
 
-    def _solver_worker(self, state, name):
-        try:
-            self.results.put(ALGORITHMS[name](state))
-        except Exception as e:
-            self.results.put(e)
-
-    def _poll_solver(self):
-        try:
-            result = self.results.get_nowait()
-        except queue.Empty:
-            self.root.after(50, self._poll_solver)
-            return
+    def _start_playback(self, result):
         if isinstance(result, Exception):
             self.set_busy(False)
-            self.set_status(f"Помилка: {result}")
+            self.show_error(result, "Розв'язок не знайдено")
             return
         self.show_stats(result)
-        if self.stop_requested:
+        if self.stop_event.is_set():
             self.set_busy(False)
             self.set_status("Пошук зупинено")
             return
@@ -412,9 +511,9 @@ class PuzzleApp:
         self.stats["optimal"].set("ні" if result.algorithm.startswith("Жадібний") else "так")
 
     def play_next(self):
-        if self.stop_requested or not self.solution:
+        if self.stop_event.is_set() or not self.solution:
             self.set_busy(False)
-            if self.state == GOAL:
+            if self.state == self.goal:
                 self.set_status(f"ШІ зібрав поле за {moves_text(self.moves_made)}")
             else:
                 self.set_status("Показ зупинено - можна продовжити вручну")
@@ -426,7 +525,7 @@ class PuzzleApp:
         self.do_move(nxt, duration, on_done=lambda: self.root.after(pause, self.play_next))
 
     def on_stop(self):
-        self.stop_requested = True
+        self.stop_event.set()
 
 
 def enable_dpi_awareness():

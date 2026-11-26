@@ -6,8 +6,20 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 
-from .board import GOAL, is_solvable, neighbors
+from .board import goal, is_solvable, neighbors, size_of
 from .heuristics import manhattan, misplaced
+
+# Скільки вузлів можна розкрити, поки пошук не здасться. Для 3x3 ліміт ніколи не
+# досягається (усього 181 440 станів), а на 4x4 він не дає забрати всю пам'ять.
+NODE_LIMIT = 500_000
+
+
+class SearchLimitError(RuntimeError):
+    pass
+
+
+class SearchStopped(RuntimeError):
+    pass
 
 
 @dataclass
@@ -38,23 +50,33 @@ def _check(start):
         raise ValueError("Ця розстановка не має розв'язку")
 
 
-def bfs(start):
+def _guard(expanded, limit, stop):
+    if expanded > limit:
+        raise SearchLimitError(
+            f"Пошук перевищив ліміт у {limit:,} розкритих вузлів".replace(",", " "))
+    if stop is not None and expanded % 1000 == 0 and stop.is_set():
+        raise SearchStopped("Пошук зупинено")
+
+
+def bfs(start, limit=NODE_LIMIT, stop=None):
     _check(start)
+    target = goal(size_of(start))
     t0 = time.perf_counter()
     parent = {start: None}
     queue = deque([start])
     expanded = 0
     max_frontier = 1
-    goal_state = start if start == GOAL else None
+    goal_state = start if start == target else None
 
     while queue and goal_state is None:
         state = queue.popleft()
         expanded += 1
+        _guard(expanded, limit, stop)
         for _, nxt in neighbors(state):
             if nxt in parent:
                 continue
             parent[nxt] = state
-            if nxt == GOAL:
+            if nxt == target:
                 goal_state = nxt
                 break
             queue.append(nxt)
@@ -70,8 +92,9 @@ def bfs(start):
     )
 
 
-def best_first(start, h, g_weight=1, name="A*"):
+def best_first(start, h, g_weight=1, name="A*", limit=NODE_LIMIT, stop=None):
     _check(start)
+    target = goal(size_of(start))
     t0 = time.perf_counter()
     counter = itertools.count()
     h0 = h(start)
@@ -87,11 +110,12 @@ def best_first(start, h, g_weight=1, name="A*"):
         _, _, _, state = heapq.heappop(frontier)
         if state in closed:
             continue
-        if state == GOAL:
+        if state == target:
             found = state
             break
         closed.add(state)
         expanded += 1
+        _guard(expanded, limit, stop)
         for _, nxt in neighbors(state):
             new_g = g[state] + 1
             if nxt not in g or new_g < g[nxt]:
@@ -111,16 +135,16 @@ def best_first(start, h, g_weight=1, name="A*"):
     )
 
 
-def astar_manhattan(start):
-    return best_first(start, manhattan, 1, "A* (манхеттенська відстань)")
+def astar_manhattan(start, limit=NODE_LIMIT, stop=None):
+    return best_first(start, manhattan, 1, "A* (манхеттенська відстань)", limit, stop)
 
 
-def astar_misplaced(start):
-    return best_first(start, misplaced, 1, "A* (плитки не на місці)")
+def astar_misplaced(start, limit=NODE_LIMIT, stop=None):
+    return best_first(start, misplaced, 1, "A* (плитки не на місці)", limit, stop)
 
 
-def greedy_manhattan(start):
-    return best_first(start, manhattan, 0, "Жадібний (манхеттенська відстань)")
+def greedy_manhattan(start, limit=NODE_LIMIT, stop=None):
+    return best_first(start, manhattan, 0, "Жадібний (манхеттенська відстань)", limit, stop)
 
 
 ALGORITHMS = {
@@ -131,10 +155,10 @@ ALGORITHMS = {
 }
 
 
-def solve(start, algorithm="A* (манхеттенська відстань)"):
-    return ALGORITHMS[algorithm](start)
+def solve(start, algorithm="A* (манхеттенська відстань)", limit=NODE_LIMIT, stop=None):
+    return ALGORITHMS[algorithm](start, limit, stop)
 
 
-def hint(state):
-    result = astar_manhattan(state)
+def hint(state, limit=NODE_LIMIT, stop=None):
+    result = astar_manhattan(state, limit, stop)
     return result.path[1] if result.moves > 0 else None

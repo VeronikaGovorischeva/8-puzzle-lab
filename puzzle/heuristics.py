@@ -1,20 +1,28 @@
 from __future__ import annotations
 
-from .board import GOAL, SIZE
+from functools import lru_cache
 
-GOAL_POS = {tile: divmod(i, SIZE) for i, tile in enumerate(GOAL)}
+from .board import goal, size_of
 
-DIST = {}
-for _tile, (_gr, _gc) in GOAL_POS.items():
-    DIST[_tile] = [abs(i // SIZE - _gr) + abs(i % SIZE - _gc) for i in range(SIZE * SIZE)]
+
+@lru_cache(maxsize=None)
+def _distances(size):
+    target = goal(size)
+    table = {}
+    for g, tile in enumerate(target):
+        gr, gc = divmod(g, size)
+        table[tile] = tuple(abs(i // size - gr) + abs(i % size - gc) for i in range(size * size))
+    return table
 
 
 def misplaced(state):
-    return sum(1 for i, tile in enumerate(state) if tile and tile != GOAL[i])
+    target = goal(size_of(state))
+    return sum(1 for i, tile in enumerate(state) if tile and tile != target[i])
 
 
 def manhattan(state):
-    return sum(DIST[tile][i] for i, tile in enumerate(state) if tile)
+    dist = _distances(size_of(state))
+    return sum(dist[tile][i] for i, tile in enumerate(state) if tile)
 
 
 def zero(state):
